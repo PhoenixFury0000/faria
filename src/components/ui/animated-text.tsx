@@ -17,16 +17,21 @@ const AnimatedText: FC<Props> = ({
             style={
                 {
                     "--shimmer-width": `${shimmerWidth}px`,
+                    "--shimmer-color": "rgba(0, 0, 0, 0.8)",
+                    "--shimmer-speed": "1.8s",
                 } as CSSProperties
             }
             className={cn(
-                "mx-auto max-w-md text-muted-foreground",
+                "mx-auto max-w-xl text-center text-muted-foreground font-semibold tracking-wide",
 
-                // Shimmer effect
-                "animate-shimmer bg-clip-text bg-no-repeat [background-position:0_0] [background-size:var(--shimmer-width)_100%] [transition:background-position_1s_cubic-bezier(.6,.6,0,1)_infinite]",
+                // Shimmer animation
+                "animate-shimmer bg-clip-text bg-no-repeat [background-position:0_0] [background-size:var(--shimmer-width)_100%]",
+                
+                // Gradient shimmer
+                "bg-gradient-to-r from-transparent via-[var(--shimmer-color)] via-50% to-transparent",
 
-                // Shimmer gradient
-                "bg-gradient-to-r from-transparent via-black/80 via-50% to-transparent ",
+                // Performance optimization
+                "motion-safe:will-change-[background-position]",
 
                 className,
             )}
