@@ -1,150 +1,252 @@
 "use client";
 
 import { cn } from "@/utils";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion, type Variant } from "framer-motion";
 import { useEffect, useId, useRef, useState } from "react";
 
-interface Props {
-    width?: number;
-    height?: number;
-    x?: number;
-    y?: number;
-    strokeDasharray?: any;
-    numSquares?: number;
-    className?: string;
-    maxOpacity?: number;
-    duration?: number;
-    repeatDelay?: number;
+interface Square {
+  id: number;
+  pos: [number, number];
+  size?: number;
+  opacity?: number;
+  delay?: number;
 }
 
+interface PatternConfig {
+  width?: number;
+  height?: number;
+  strokeWidth?: number;
+  strokeColor?: string;
+  strokeDasharray?: string;
+  fill?: string;
+}
+
+interface AnimationConfig {
+  duration?: number;
+  repeatDelay?: number;
+  easing?: string;
+  stagger?: number;
+  type?: "fade" | "slide" | "pulse";
+}
+
+interface Props extends PatternConfig, AnimationConfig {
+  numSquares?: number;
+  className?: string;
+  maxOpacity?: number;
+  squareVariance?: number;
+  reduceMotion?: boolean;
+  interactive?: boolean;
+  pattern?: boolean;
+  squareColor?: string;
+}
+
+const defaultAnimation: Variant = {
+  opacity: 0,
+  transition: { duration: 0.5 }
+};
+
+const animateIn: Variant = {
+  opacity: 1,
+  transition: { duration: 1.5, ease: "easeInOut" }
+};
+
 export function AnimatedBackground({
-    width = 40,
-    height = 40,
-    x = -1,
-    y = -1,
-    strokeDasharray = 0,
-    numSquares = 50,
-    className,
-    maxOpacity = 0.5,
-    duration = 4,
-    repeatDelay = 0.5,
-    ...props
+  width = 40,
+  height = 40,
+  x = -1,
+  y = -1,
+  strokeWidth = 1,
+  strokeColor = "currentColor",
+  strokeDasharray = "0",
+  fill = "rgba(0,0,0,0.01)",
+  numSquares = 50,
+  className,
+  maxOpacity = 0.5,
+  duration = 4,
+  repeatDelay = 0.5,
+  easing = "easeInOut",
+  stagger = 0.1,
+  type = "fade",
+  squareVariance = 0.3,
+  reduceMotion = false,
+  interactive = false,
+  pattern = true,
+  squareColor = "currentColor",
+  ...props
 }: Props) {
-    const id = useId();
-    const containerRef = useRef(null);
-    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-    const [squares, setSquares] = useState(() => generateSquares(numSquares));
+  const id = useId();
+  const containerRef = useRef<SVGSVGElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [squares, setSquares] = useState<Square[]>([]);
+  const shouldReduceMotion = useReducedMotion() || reduceMotion;
 
-    function getPos() {
-        return [
-            Math.floor((Math.random() * dimensions.width) / width),
-            Math.floor((Math.random() * dimensions.height) / height),
-        ];
+  // Generate squares with variance in size and opacity
+  const generateSquares = (count: number): Square[] => {
+    return Array.from({ length: count }, (_, i) => {
+      const sizeVariance = 1 + (Math.random() * squareVariance * 2 - squareVariance);
+      const opacityVariance = maxOpacity * (0.8 + Math.random() * 0.4);
+      const delayVariance = Math.random() * stagger * 2;
+      
+      return {
+        id: i,
+        pos: getPos(),
+        size: Math.max(5, width * sizeVariance),
+        opacity: shouldReduceMotion ? maxOpacity : opacityVariance,
+        delay: shouldReduceMotion ? 0 : delayVariance,
+      };
+    });
+  };
+
+  const getPos = (): [number, number] => {
+    const cols = Math.floor(dimensions.width / width);
+    const rows = Math.floor(dimensions.height / height);
+    return [
+      Math.floor(Math.random() * cols),
+      Math.floor(Math.random() * rows),
+    ];
+  };
+
+  const updateSquarePosition = (id: number) => {
+    if (shouldReduceMotion) return;
+    
+    setSquares(currentSquares =>
+      currentSquares.map(sq =>
+        sq.id === id ? { ...sq, pos: getPos() } : sq
+      )
+    );
+  };
+
+  // Initialize and update squares when dimensions change
+  useEffect(() => {
+    if (dimensions.width && dimensions.height) {
+      setSquares(generateSquares(numSquares));
     }
+  }, [dimensions, numSquares, shouldReduceMotion]);
 
-    // Adjust the generateSquares function to return objects with an id, x, and y
-    function generateSquares(count: number) {
-        return Array.from({ length: count }, (_, i) => ({
-            id: i,
-            pos: getPos(),
-        }));
-    }
+  // Handle container resize
+  useEffect(() => {
+    if (!containerRef.current) return;
 
-    // Function to update a single square's position
-    const updateSquarePosition = (id: number) => {
-        setSquares((currentSquares) =>
-            currentSquares.map((sq) =>
-                sq.id === id
-                    ? {
-                        ...sq,
-                        pos: getPos(),
-                    }
-                    : sq,
-            ),
-        );
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect();
+        setDimensions({ width, height });
+      }
     };
 
-    // Update squares to animate in
-    useEffect(() => {
-        if (dimensions.width && dimensions.height) {
-            setSquares(generateSquares(numSquares));
-        }
-    }, [dimensions, numSquares]);
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    resizeObserver.observe(containerRef.current);
 
-    // Resize observer to update container dimensions
-    useEffect(() => {
-        const resizeObserver = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                setDimensions({
-                    width: entry.contentRect.width,
-                    height: entry.contentRect.height,
-                });
-            }
-        });
+    // Initial measurement
+    updateDimensions();
 
-        if (containerRef.current) {
-            resizeObserver.observe(containerRef.current);
-        }
+    return () => resizeObserver.disconnect();
+  }, []);
 
-        return () => {
-            if (containerRef.current) {
-                resizeObserver.unobserve(containerRef.current);
-            }
+  // Animation variants based on type
+  const getAnimationVariant = (): Variant => {
+    if (shouldReduceMotion) {
+      return {
+        opacity: maxOpacity,
+        transition: { duration: 0 }
+      };
+    }
+
+    switch (type) {
+      case "slide":
+        return {
+          opacity: [0, maxOpacity, 0],
+          x: [-10, 0, 10],
+          y: [-10, 0, 10],
+          transition: {
+            duration,
+            repeatDelay,
+            repeat: Infinity,
+            repeatType: "reverse",
+            ease: easing
+          }
         };
-    }, [containerRef]);
+      case "pulse":
+        return {
+          opacity: [maxOpacity * 0.3, maxOpacity, maxOpacity * 0.3],
+          scale: [0.9, 1, 0.9],
+          transition: {
+            duration,
+            repeatDelay,
+            repeat: Infinity,
+            repeatType: "reverse",
+            ease: easing
+          }
+        };
+      default: // fade
+        return {
+          opacity: [0, maxOpacity, 0],
+          transition: {
+            duration,
+            repeatDelay,
+            repeat: Infinity,
+            repeatType: "reverse",
+            ease: easing
+          }
+        };
+    }
+  };
 
-    return (
-        <svg
-            ref={containerRef}
-            aria-hidden="true"
-            className={cn(
-                "pointer-events-none absolute inset-0 h-full w-full fill-[rgba(0,0,0,0.01)] stroke-muted-foreground/20",
-                className,
-            )}
-            {...props}
-        >
-            <defs>
-                <pattern
-                    id={id}
-                    width={width}
-                    height={height}
-                    patternUnits="userSpaceOnUse"
-                    x={x}
-                    y={y}
-                >
-                    <path
-                        d={`M.5 ${height}V.5H${width}`}
-                        fill="none"
-                        strokeDasharray={strokeDasharray}
-                    />
-                </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill={`url(#${id})`} />
-            <svg x={x} y={y} className="overflow-visible">
-                {squares.map(({ pos: [x, y], id }, index) => (
-                    <motion.rect
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: maxOpacity }}
-                        transition={{
-                            duration,
-                            repeat: 1,
-                            delay: index * 0.1,
-                            repeatType: "reverse",
-                        }}
-                        onAnimationComplete={() => updateSquarePosition(id)}
-                        key={`${x}-${y}-${index}`}
-                        width={width - 1}
-                        height={height - 1}
-                        x={x * width + 1}
-                        y={y * height + 1}
-                        fill="currentColor"
-                        strokeWidth="0"
-                    // opacity={0.5}
-                    />
-                ))}
-            </svg>
-        </svg>
-    );
+  return (
+    <svg
+      ref={containerRef}
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute inset-0 h-full w-full",
+        interactive ? "pointer-events-auto" : "pointer-events-none",
+        className
+      )}
+      {...props}
+    >
+      {pattern && (
+        <defs>
+          <pattern
+            id={id}
+            width={width}
+            height={height}
+            patternUnits="userSpaceOnUse"
+            x={x}
+            y={y}
+          >
+            <path
+              d={`M.5 ${height}V.5H${width}`}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeDasharray={strokeDasharray}
+            />
+          </pattern>
+        </defs>
+      )}
+      
+      {pattern && (
+        <rect width="100%" height="100%" fill={`url(#${id})`} />
+      )}
+
+      <svg x={x} y={y} className="overflow-visible">
+        {squares.map(({ pos: [xPos, yPos], id, size = width, opacity = maxOpacity, delay = 0 }) => (
+          <motion.rect
+            key={`${id}-${xPos}-${yPos}`}
+            initial={shouldReduceMotion ? undefined : defaultAnimation}
+            animate={getAnimationVariant()}
+            onAnimationComplete={() => updateSquarePosition(id)}
+            custom={delay}
+            width={size - strokeWidth}
+            height={size - strokeWidth}
+            x={xPos * width + strokeWidth / 2}
+            y={yPos * height + strokeWidth / 2}
+            fill={squareColor}
+            strokeWidth="0"
+          />
+        ))}
+      </svg>
+    </svg>
+  );
 }
 
 export default AnimatedBackground;
